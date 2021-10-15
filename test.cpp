@@ -4,6 +4,9 @@
 #include <cmath>
 #include <intrin.h>
 
+
+//
+
 int const a=4, b=6;
 int i, j, har[b], m[a][b], s=0;
 using namespace std;

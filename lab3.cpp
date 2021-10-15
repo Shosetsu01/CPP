@@ -58,8 +58,7 @@ int main() {
             cout << " " << arr[i][j];
         }
         cout << endl; 
-    }
-
+        }
     }
 
     return 0;
