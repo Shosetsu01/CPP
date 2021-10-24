@@ -16,6 +16,7 @@ double F(double x, double y) {
     return 0;
 }
 
+// рассматриваем область D = {(x, y) R2: 0 <= x <= 1, 0 <= y <= 1}
 double G(double x, double y) {
     if (x==0) return 1-2*y;
     if (x==1) return -1+2*y;
