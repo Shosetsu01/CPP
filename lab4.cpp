@@ -35,10 +35,10 @@ void UOutput() {
 
 void UOutput1() {
     cout << fixed << setprecision(5);
-    // for (int i = 0; i < 11; i++) {
-    //     for (int j = 0; j < 10; j++)
-    //         cout << setw(8) << abs(u[i*(N+1)/10][j*(N+1)/10]-u0[i*(N+1)/10][j*(N+1)/10]);
-    // }
+    for (int i = 0; i < 11; i++) {
+        for (int j = 0; j < 10; j++)
+            cout << setw(8) << abs(u[i*(N+1)/10][j*(N+1)/10]-u0[i*(N+1)/10][j*(N+1)/10]);
+    }
     double d = 0;
     for (int i = 1; i < N+1; i++)
         for (int j = 1; j < N+1; j++)
@@ -62,7 +62,7 @@ void Init() {
     for (int i = 1; i < N+1; i++) {
         u[i] = new double[N+2];
         for (int j = 1; j < N+1; j++)
-            u[i][j] = 0;
+            u[i][j] = 1;
             u[i][0] = G(i*h, 0);
             u[i][N+1] = G(i*h, (N+1)*h);
     }
@@ -73,7 +73,6 @@ void Init() {
         u[0][j] = G(0,j*h);
         u[N+1][j] = G((N+1)*h,j*h);
     }
-    UOutput();
 }
 
 void Calc() {
@@ -85,7 +84,8 @@ void Calc() {
         for (int i = 1; i < N+1; i++)
             for (int j = 1; j < N+1; j++) {
                 double u0 = u[i][j];
-                u[i][j] = 0.25*(u[i-1][j] + u[i+1][j] + u[i][j-1] + u[i][j+1] - h*h*f[i-1][j-1]);
+                u[i][j] = 0.25*(u[i-1][j] + u[i+1][j] + u[i][j-1] + u[i][j+1]);
+                //  - h*h*f[i-1][j-1])
                 double d = abs(u[i][j]-u0);
                 if (d > max)
                     max = d;
@@ -105,8 +105,8 @@ void OMPCalc() {
             double max0 = 0;
             for (int j = 1; j < N+1; j++) {
                 double u0 = u[i][j];
-                u[i][j] = 0.25*(u[i-1][j] + u[i+1][j]
-                + u[i][j-1] + u[i][j+1] - h*h*f[i-1][j-1]);
+                u[i][j] = 0.25*(u[i-1][j] + u[i+1][j] + u[i][j-1] + u[i][j+1]);
+                // - h*h*f[i-1][j-1])
                 double d = abs(u[i][j]-u0);
                 if (d > max0)
                     max0 = d;
@@ -122,19 +122,18 @@ void OMPCalc() {
 
 int main(int argc, char **argv) {
     Init();
+    UOutput();
     double tt= omp_get_wtime();
     Calc();
     tt = omp_get_wtime() - tt;
     cout << "Time = " << tt << " IterCnt = " << IterCnt << endl;
-    u0 = u;
     Init();
     double tt1= omp_get_wtime();
     OMPCalc();
     tt1 = omp_get_wtime() - tt1;
     cout << "Time = " << tt1 << " IterCnt = " << IterCnt << endl;
     cout << tt/tt1 << endl;
-    UOutput1();
-    cin.get();
+    UOutput();
 
     return 0;
 }

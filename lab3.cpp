@@ -8,24 +8,36 @@
 #include <iostream>
 #include <time.h>
 #include <stdio.h>
+#include <iomanip>
+#include <cstdlib>
 #include <omp.h>
+#include <fstream>
 
 using namespace std;
 
-#define N 6
+#define N 1000
 
 int arr[N][N];
 
 int main() {
-    for (int i = 0; i < N - 1; i++) {
-        for (int j = 0; j < N - 1; j++) {
+    ofstream outf("lab3.txt");
+
+    if (!outf)
+	{
+		// то выводим сообщение об ошибке и выполняем функцию exit()
+		cerr << "Uh oh, SomeText.txt could not be opened for writing!" << endl;
+		exit(1);
+	}
+
+    for (int i = 0; i < N; i++) {
+        for (int j = 0; j < N; j++) {
             arr[i][j] = rand()%100-100;
-            cout << " " << arr[i][j];
+            outf << setw(4) << arr[i][j];
         }
-        cout << endl; 
+        outf << endl; 
     }
 
-    cout << endl; 
+    outf << endl; 
    
 
     #pragma omp parallel num_threads(2)
@@ -33,11 +45,11 @@ int main() {
         double start_time, end_time, tick;
         start_time = omp_get_wtime();
 
-        #pragma omp for
+        #pragma omp for 
         // сортировка элементов столбцов массива по возрастанию 
-        for (int j = 0; j < N - 1; j++) {
-            for (int i = 0; i < N - 1; i++) {
-                for (int k = 0, temp = 0; k < N - j - 1; k++) {
+        for (int j = 0; j < N; j++) {
+            for (int i = 0; i < N; i++) {
+                for (int k = 0, temp = 0; k < N; k++) {
                     if (arr[i][k] > arr[i + 1][k]) {
                         // меняем элементы местами
                         temp = arr[i][k];
@@ -50,16 +62,21 @@ int main() {
 
         end_time = omp_get_wtime();
         tick = omp_get_wtick();
+    
         printf("Время на замер времени %lf\n", end_time-start_time);
         printf("Точность таймера %lf\n", tick);
-
-        for (int i = 0; i < N - 1; i++) {
-        for (int j = 0; j < N - 1; j++) {
-            cout << " " << arr[i][j];
-        }
-        cout << endl; 
-        }
+        // outf << "Время на замер времени = " << end_time-start_time << endl;
+        // outf << "Точность таймера = " << tick << endl;
     }
+
+    for (int i = 0; i < N; i++) {
+        outf << setw(4) << i+1 << " "; 
+        for (int j = 0; j < N; j++) {
+            outf << setw(4) << arr[i][j];
+        }
+        outf << endl; 
+    }
+    
 
     return 0;
 }
