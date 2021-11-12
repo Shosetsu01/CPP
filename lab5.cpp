@@ -2,50 +2,41 @@
 // Каждый игрок бьет по мячу (сообщение MPI) со случайной силой (в ньютонах) по 1 разу. 
 // Мяч получает удары и определяет, с какой силой его ударили, выводя сообщение на экран.
 
+#include "mpi.h"
+#include <stdio.h>
+#include <stdlib.h>     
+#include <time.h>  
 #include <iostream>
-#include <cstdlib>
-#include <mpi.h>
 #include <unistd.h>
 
 using namespace std;
 
-int main(int argc, char *argv[]) {
-	int rang, numfr, tag=0;
-	int rc= MPI_Init(&argc, &argv);
-	MPI_Status stat;
-	MPI_Comm_size(MPI_COMM_WORLD,&numfr); 
-	MPI_Comm_rank(MPI_COMM_WORLD,&rang); 
-	
-	if(rang ==0){
-		int zak;
-		for(int i=1; i < numfr; i++){
-			rc = MPI_Recv(&zak,1,MPI_INT,i,tag,MPI_COMM_WORLD,&stat);	
-			sleep(0.1);
-			cout << " принял " << zak <<endl;
-			rc = MPI_Send(&zak,1,MPI_INT,i,tag,MPI_COMM_WORLD);
+int main(int argc, char **argv) {
+    srand (time(NULL));
+
+    int rank, size, tag = 0;
+    MPI_Status status;
+    MPI_Init(&argc, &argv);
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &size);
+    if (rank == 0) {
+        int myach;
+		for(int i=1; i < size; i++){
+			MPI_Recv(&myach,1,MPI_INT,i,tag,MPI_COMM_WORLD,&status);
+            // sleep(1);	
+			cout << " Удар! " << myach << "н" <<endl;
+			MPI_Send(&myach,1,MPI_INT,i,tag,MPI_COMM_WORLD);
 		}
-		
-		for(int i=1; i < numfr; i++){
-			rc = MPI_Recv(&zak,1,MPI_INT,i,tag,MPI_COMM_WORLD,&stat);	
-			sleep(0.1);
-			cout << " принял " << zak <<endl;
-			rc = MPI_Send(&zak,1,MPI_INT,i,tag,MPI_COMM_WORLD);
-		}
-	}
-	
-	if(rang != 0){
-		int blud;
-		blud = rang;
-		rc = MPI_Send(&blud,1,MPI_INT,0,tag,MPI_COMM_WORLD);
-		rc = MPI_Recv(&blud,1,MPI_INT,0,tag,MPI_COMM_WORLD,&stat);	
-		//cout << rang << " принял " << blud <<endl;
-		
-		blud = rang + 100;
-		rc = MPI_Send(&blud,1,MPI_INT,0,tag,MPI_COMM_WORLD);
-		rc = MPI_Recv(&blud,1,MPI_INT,0,tag,MPI_COMM_WORLD,&stat);
-		//cout << rang << " принял " << blud <<endl;
-	}
-	
-	MPI_Finalize();
+    } 
+    if (rank != 0) {
+        int silaUdara;
+		silaUdara = rand() % 100 + 1;
+        MPI_Send(&silaUdara,1,MPI_INT,0,tag,MPI_COMM_WORLD);
+		MPI_Recv(&silaUdara,1,MPI_INT,0,tag,MPI_COMM_WORLD,&status);	 
+    }
+    
+    // cout << rank << " ";
+
+    MPI_Finalize();
 	return 0;
 }
