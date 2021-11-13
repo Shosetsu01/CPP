@@ -14,6 +14,9 @@ using namespace std;
 int main(int argc, char **argv) {
     srand (time(NULL));
 
+    int a[] = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22 };
+    random_shuffle(a, a + 22);
+
     int rank, size, tag = 0;
     MPI_Status status;
     MPI_Init(&argc, &argv);
@@ -22,10 +25,10 @@ int main(int argc, char **argv) {
     if (rank == 0) {
         int myach;
 		for(int i=1; i < size; i++){
-			MPI_Recv(&myach,1,MPI_INT,i,tag,MPI_COMM_WORLD,&status);
+			MPI_Recv(&myach,1,MPI_INT,a[i-1],tag,MPI_COMM_WORLD,&status);
             // sleep(1);	
-			cout << " Удар! " << myach << "н" <<endl;
-			MPI_Send(&myach,1,MPI_INT,i,tag,MPI_COMM_WORLD);
+			cout << a[i-1] << " " << " Удар! " << myach << "н" <<endl;
+			MPI_Send(&myach,1,MPI_INT,a[i-1],tag,MPI_COMM_WORLD);
 		}
     } 
     if (rank != 0) {
