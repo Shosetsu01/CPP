@@ -14,9 +14,6 @@ using namespace std;
 int main(int argc, char **argv) {
     srand (time(NULL));
 
-    int a[] = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22 };
-    random_shuffle(a, a + 22);
-
     int rank, size, tag = 0;
     MPI_Status status;
     MPI_Init(&argc, &argv);
@@ -25,10 +22,10 @@ int main(int argc, char **argv) {
     if (rank == 0) {
         int myach;
 		for(int i=1; i < size; i++){
-			MPI_Recv(&myach,1,MPI_INT,a[i-1],tag,MPI_COMM_WORLD,&status);
+			MPI_Recv(&myach,1,MPI_INT,MPI_ANY_SOURCE,tag,MPI_COMM_WORLD,&status);
             // sleep(1);	
-			cout << a[i-1] << " " << " Удар! " << myach << "н" <<endl;
-			MPI_Send(&myach,1,MPI_INT,a[i-1],tag,MPI_COMM_WORLD);
+			cout << status.MPI_SOURCE << " " << " Удар! " << myach << "н" <<endl;
+			MPI_Send(&myach,1,MPI_INT,status.MPI_SOURCE,tag,MPI_COMM_WORLD);
 		}
     } 
     if (rank != 0) {
@@ -43,3 +40,46 @@ int main(int argc, char **argv) {
     MPI_Finalize();
 	return 0;
 }
+
+
+// #include "mpi.h"
+// #include <stdio.h>
+// #include <stdlib.h>     
+// #include <time.h>  
+// #include <iostream>
+// #include <unistd.h>
+
+// using namespace std;
+
+// int main(int argc, char **argv) {
+//     srand (time(NULL));
+
+//     int rank, size, tag = 0;
+//     MPI_Status status[23];
+//     MPI_Request reqs[23];
+//     MPI_Init(&argc, &argv);
+//     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+//     MPI_Comm_size(MPI_COMM_WORLD, &size);
+//     if (rank == 0) {
+//         int myach[23];
+// 		for(int i=1; i < size; i++){
+// 			MPI_Irecv(&myach[i],1,MPI_INT,MPI_ANY_SOURCE,MPI_ANY_TAG,MPI_COMM_WORLD,&reqs[i]);
+//             // sleep(1);	
+// 			cout << i << " " << " Удар! " << myach[i] << "н" <<endl;
+// 			MPI_Isend(&myach[i],1,MPI_INT,status.MPI_SOURCE,tag,MPI_COMM_WORLD,&reqs[i+2]);
+// 		}
+//     } 
+//     if (rank != 0) {
+//         int silaUdara;
+// 		silaUdara = rand() % 100 + 1;
+//         MPI_Isend(&silaUdara,1,MPI_INT,0,tag,MPI_COMM_WORLD,&reqs);
+// 		MPI_Irecv(&silaUdara,1,MPI_INT,0,tag,MPI_COMM_WORLD,&reqs);	 
+//     }
+//     MPI_Waitall(rank, &reqs, &status);
+    
+//     // cout << rank << " ";
+
+//     MPI_Finalize();
+// 	return 0;
+// }
+

@@ -1,58 +1,104 @@
 // 6. МПИ Составить программу, решающую систему линейных 
 // алгебраических уравнений методом простых итераций. 
 // Для распараллеливания использовать MPI и коллективные операции.
+// 
+// Распределение данных - горизонтальными полосами. (Запуск задачи на четырех компьютерах).  
 
-#include <iostream>
-#include <cmath>
- 
- 
-using namespace std;
+#include <stdio.h>
+#include <mpi.h>
+#include <time.h>
+#include <sys/time.h>
+#include <stdlib.h> 
+#include <string.h>
 
-int main()
-{
-    double a11 = -19, a12 = 2, a13 = -1, a14 = -8;  // матрица 
-    double a21 = 2, a22 = 14, a23 = 0, a24 = -4;
-    double a31 = 6, a32 = -5, a33 = -20, a34 = -6;
-    double a41 = -6, a42 = 4, a43 = -2, a44 = 15;
-    double b1 = 38, b2 = 20, b3 = 52, b4 = 43;      // столбец свободных членов
-    
-    double x1 = 0, x2 = 0, x3 = 0, x4 = 0;          // начальное приближение
-    double x1n, x2n, x3n, x4n;
-    double eps = 0.0000000000001;
-    int count;
-    
-    if ( fabs(a11) > fabs(a12) + fabs(a13) + fabs(a14) &&
-         fabs(a22) > fabs(a21) + fabs(a23) + fabs(a24) &&
-         fabs(a33) > fabs(a31) + fabs(a32) + fabs(a34) &&
-         fabs(a44) > fabs(a41) + fabs(a42) + fabs(a43))
-         cout << "Diagonal'noe preobladaniye ne narushaetsya" << endl;
-    else 
-    {
-        cout << "Diagonal'noe preobladaniye narushaetsya" << endl;
-    }
-    count = 0;
-    do 
-    {
-        x1n = (b1 - (a12*x2 + a13*x3 + a14*x4))/a11; 
-        x2n = (b2 - (a21*x1 + a23*x3 + a24*x4))/a22;
-        x3n = (b3 - (a31*x1 + a32*x2 + a34*x4))/a33;
-        x4n = (b4 - (a41*x1 + a42*x2 + a43*x3))/a44;
-        count = count + 1;
-        if(fabs(x1n-x1) < eps && 
-            fabs(x2n-x2) < eps && 
-            fabs(x3n-x3) < eps &&
-            fabs(x4n-x4) < eps) break;
-        x1 = x1n;
-        x2 = x2n;
-        x3 = x3n;
-        x4 = x4n;
-        
-//  cout << "x1 = " << x1n << endl << "x2 = " << x2n << endl << "x3 = " << x3n << endl << "x4 = " << x4n << endl;   
-    }while(1);  
-    x1 = x1n;
-    x2 = x2n;
-    x3 = x3n;
-    x4 = x4n;
-    cout << "Kolichestvo iter. = " << count << endl << "x1 = " << x1 << endl 
-         << "x2 = " << x2 << endl << "x3 = " << x3 << endl << "x4 = " << x4 << endl;       
+// Каждая ветвь задает размеры своих полос матрицы MA и вектора правой части. (Предполагаем, что размеры данных делятся без остатка на количество компьютеров.)  
+#define M 16
+#define N 4
+#define EL(x) (sizeof(x) / sizeof(x[0]))
+#define ABS(X) ((X) < 0 ? -(X) : (X))
+// Задаем необходимую точность приближенных корней  
+#define E 0.0001
+// Задаем шаг итерации  
+#define T 0.1
+// Описываем массивы для полос исходной матрицы - MA, вектора правой части - F, значения приближений на предыдущей итерации - Y и текущей - Y1, результата умножения матрицы коэффициентов на вектор - S и всего вектора значения приближений на предыдущей итерации - V.  
+static double MA[N][M], F[N], Y[N], Y1[N], S[N], V[M];
+
+int main(int argc, char **argv) {
+	int i, j, z, H, MyP, size, v;
+	int *index, *edges;
+	MPI_Comm comm_gr;
+	int rt, t1, t2; // Для засечения времени  
+	int reord = 1;
+	// Инициализация библиотеки  
+	MPI_Init(&argc, &argv);
+	// Каждая ветвь узнает размер системы  
+	MPI_Comm_size(MPI_COMM_WORLD, &size);
+	// Выделяем память под массивы для описания вершин и ребер в топологии полный граф  
+	index = (int *)malloc(size * sizeof(int));
+	edges = (int *)malloc(size * (size - 1) * sizeof(int));
+	// Заполняем массивы для описания вершин и ребер для топологии полный граф и задаем топологию "полный граф".  
+	for (i = 0; i < size; i++) {
+		index[i] = (size - 1) * (i + 1);
+		v = 0;
+		for (j = 0; j < size; j++)
+		{
+			if (i != j)
+				edges[i * (size - 1) + v++] = j;
+		}
+	}
+	MPI_Graph_create(MPI_COMM_WORLD, size, index, edges, reord,
+					 &comm_gr);
+	// каждая ветвь определяет свой номер (ранг)  
+	MPI_Comm_rank(comm_gr, &MyP);
+	// Каждая ветвь генерирует свои полосы матрицы A и свой отрезок вектора правой части. (По диагонали исходной матрицы - числа = 2, остальные числа = 1).  
+	for (i = 0; i < N; i++)
+	{
+		for (j = 0; j < M; j++)
+		{
+			if ((N * MyP + i) == j)
+				MA[i][j] = 2.0;
+			else
+				MA[i][j] = 1.0;
+		}
+		F[i] = M + 1;
+	}
+	// Каждая ветвь засекает начало вычислений и производит вычисления  
+	t1 = MPI_Wtime();
+	// Каждая ветвь задает начальное приближение корней.  
+	for (i = 0; i < N; i++)
+		Y1[i] = 0.8;
+	// Начало вычислений  
+	do
+	{
+		for (i = 0; i < N; i++)
+		{
+			S[i] = 0.0;
+			Y[i] = Y1[i];
+		}
+		// В каждой ветви формируем весь вектор предыдущей итерации и умножаем матрицу коэффициентов на этот вектор  
+		MPI_Allgather(Y, EL(Y), MPI_DOUBLE, V, EL(Y), MPI_DOUBLE,
+					  comm_gr);
+		for (j = 0; j < N; j++)
+			for (i = 0; i < M; i++)
+				S[j] += MA[j][i] * V[i];
+		z = 0; // Флаг завершения вычислений всеми ветвями  
+		for (i = 0; i < N; i++)
+		{
+			Y1[i] = Y[i] - T * (S[i] - F[i]);
+			if (ABS(ABS(Y1[i]) - ABS(Y[i])) > E)
+				z = 1;
+		}
+		// Суммируем все флаги (по всем ветвям) и результат записываем в H в каждой ветви  
+		MPI_Allreduce(&z, &H, 1, MPI_INT, MPI_SUM, comm_gr);
+	} while (H > 0);
+	// Все ветви засекают время и печатают  
+	t2 = MPI_Wtime();
+	rt = t2 - t1;
+	printf("MyP = %d Time = %d\n", MyP, rt);
+	// Все ветви для контроля печатают свои первые четыре значения корня  
+	printf("Rez MyP = %d Y0=%f Y1=%f Y2=%f Y3=%f\n", MyP, Y[0], Y[1], Y[2], Y[3]);
+	// Все ветви завершают выполнение  
+	MPI_Comm_free(&comm_gr);
+	MPI_Finalize();
+	return (0);
 }
