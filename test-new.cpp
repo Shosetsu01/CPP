@@ -1,99 +1,127 @@
-/* Решение СЛАУ методом простой итерации. Распределение данных - горизонтальными полосами. (Запуск задачи на четырех компьютерах). */
+// Строилов Денис - КС-40 - Лаба 6 - Вариант 5
+
+#include "mpi.h"
 #include <stdio.h>
-#include <mpi.h>
+#include <iostream>
 #include <time.h>
-#include <sys/time.h>
-#include <stdlib.h> 
-#include <string.h>
 
-/* Каждая ветвь задает размеры своих полос матрицы MA и вектора правой части. (Предполагаем, что размеры данных делятся без остатка на количество компьютеров.) */
-#define M 16
-#define N 4
-#define EL(x) (sizeof(x) / sizeof(x[0]))
-#define ABS(X) ((X) < 0 ? - (X) : (X))
-/* Задаем необходимую точность приближенных корней */
-#define E 0.0001
-/* Задаем шаг итерации */
-#define T 0.1
-/* Описываем массивы для полос исходной матрицы - MA, вектора правой части - F, значения приближений на предыдущей итерации - Y и текущей - Y1, результата умножения матрицы коэффициентов на вектор - S и всего вектора значения приближений на предыдущей итерации - V. */
-static double MA[N][M], F[N], Y[N], Y1[N], S[N], V[M];
+using namespace std;
 
-int main(int argc, char **argv) {
-	int i, j, z, H, MyP, size, v;
-	int *index, *edges;
-	MPI_Comm comm_gr;
-	int rt, t1, t2; /* Для засечения времени */
-	int reord = 1;
-	/* Инициализация библиотеки */
+// Команда для запуска программы (2 бригады по 20 рабочих каждая)
+// mpiexec -n 40 Lab-7.exe
+
+// Кол-во рабочих в каждой бригаде
+const int WORKERS = 10;
+
+// Кол-во кругов обмена сообщениями
+const int ROUNDS = 5;
+
+int main(int argc, char** argv)
+{
+	// Ранг потока (номер потока среди всех потоков)
+	int rank;
+
+	// Инициализируем MPI
 	MPI_Init(&argc, &argv);
-	/* Каждая ветвь узнает размер системы */
+
+	// Инициализируем коммуникатор
+	MPI_Comm comm = MPI_COMM_WORLD;
+
+	// Получаем в переменную rank ранг текущего потока в глобальном коммуникаторе (т.е. среди всех потоков программы)
+	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
+	int size;
 	MPI_Comm_size(MPI_COMM_WORLD, &size);
-	/* Выделяем память под массивы для описания вершин и ребер в топологии полный граф */
-	index = (int *)malloc(size * sizeof(int));
-	edges = (int *)malloc(size * (size - 1) * sizeof(int));
-	/* Заполняем массивы для описания вершин и ребер для топологии полный граф и задаем топологию "полный граф". */
-	for (i = 0; i < size; i++) {
-		index[i] = (size - 1) * (i + 1);
-		v = 0;
-		for (j = 0; j < size; j++)
-		{
-			if (i != j)
-				edges[i * (size - 1) + v++] = j;
-		}
-	}
-	MPI_Graph_create(MPI_COMM_WORLD, size, index, edges, reord,
-					 &comm_gr);
-	/* каждая ветвь определяет свой номер (ранг) */
-	MPI_Comm_rank(comm_gr, &MyP);
-	/* Каждая ветвь генерирует свои полосы матрицы A и свой отрезок вектора правой части. (По диагонали исходной матрицы - числа = 2, остальные числа = 1). */
-	for (i = 0; i < N; i++)
+
+	// Кол-во объектов в массиве MPI_Requests
+	MPI_Request* reqs = new MPI_Request[size];
+
+	// Объект класса MPI_Status - необходим для получения сообщений
+	MPI_Status* status = new MPI_Status[size];
+
+	// Создаем переменную для получения/отправки сообщений
+	int msg_data = 0;
+
+	// Переменная под кол-во отправленных вопросов
+	int questions_sent = 0;
+
+	// Переменная под кол-во отправленных ответов
+	int answers_sent = 0;
+
+	// Переменная под кол-во полученных вопросов
+	int questions_recieved = 0;
+
+	// Переменная под кол-во полученных ответов
+	int answers_recieved = 0;
+
+	// Задаем кол-во кругов обмена сообщениями
+	for (int round = 0; round < ROUNDS; round++)
 	{
-		for (j = 0; j < M; j++)
+
+		// Если текущий рабочий относится к первой бригаде
+		if (rank < WORKERS)
 		{
-			if ((N * MyP + i) == j)
-				MA[i][j] = 2.0;
-			else
-				MA[i][j] = 1.0;
+			// Рассылаем по очереди сообщение-вопрос каждому рабочему из другой бригады
+			for (int i = WORKERS; i < WORKERS + WORKERS; i++)
+			{
+				MPI_Isend(&msg_data, 1, MPI_INT, i, i, MPI_COMM_WORLD, &reqs[i]);
+				questions_sent++;
+				MPI_Irecv(&msg_data, 1, MPI_INT, i, MPI_ANY_TAG, MPI_COMM_WORLD, &reqs[i]);
+				answers_recieved++;
+				std::cout << "I (" << rank << ") sent a question to the " << i << endl;
+			}
+
+			// Получаем ответы от всех рабочих другой бригады и отправляем ответы
+			for (int i = WORKERS; i < WORKERS + WORKERS; i++)
+			{
+				MPI_Irecv(&msg_data, 1, MPI_INT, i, MPI_ANY_TAG, MPI_COMM_WORLD, &reqs[i]);
+				questions_recieved++;
+				MPI_Isend(&msg_data, 1, MPI_INT, i, i, MPI_COMM_WORLD, &reqs[i]);
+				answers_sent++;
+				std::cout << "I (" << rank << ") sent an answer to the " << i << endl;
+			}
 		}
-		F[i] = M + 1;
+
+		// Если текущий рабочий относится к первой бригаде
+		else
+		{
+			// Рассылаем по очереди сообщение-вопрос каждому рабочему из другой бригады
+			for (int i = 0; i < WORKERS; i++)
+			{
+				MPI_Isend(&msg_data, 1, MPI_INT, i, i, MPI_COMM_WORLD, &reqs[i]);
+				questions_sent++;
+				MPI_Irecv(&msg_data, 1, MPI_INT, i, MPI_ANY_TAG, MPI_COMM_WORLD, &reqs[i]);
+				answers_recieved++;
+				std::cout << "I (" << rank << ") sent a question to the " << i << endl;
+			}
+
+			// Получаем ответы от всех рабочих другой бригады и отправляем ответы
+			for (int i = 0; i < WORKERS; i++)
+			{
+				MPI_Irecv(&msg_data, 1, MPI_INT, i, MPI_ANY_TAG, MPI_COMM_WORLD, &reqs[i]);
+				questions_recieved++;
+				MPI_Isend(&msg_data, 1, MPI_INT, i, i, MPI_COMM_WORLD, &reqs[i]);
+				answers_sent++;
+				std::cout << "I (" << rank << ") sent an answer to the " << i << endl;
+			}
+		}
+
+		// Ждем получения данных от всех запросов
+		MPI_Waitall(size, reqs, status);
+
 	}
-	/* Каждая ветвь засекает начало вычислений и производит вычисления */
-	t1 = MPI_Wtime();
-	/* Каждая ветвь задает начальное приближение корней. */
-	for (i = 0; i < N; i++)
-		Y1[i] = 0.8;
-	/* Начало вычислений */
-	do
-	{
-		for (i = 0; i < N; i++)
-		{
-			S[i] = 0.0;
-			Y[i] = Y1[i];
-		}
-		/* В каждой ветви формируем весь вектор предыдущей итерации и умножаем матрицу коэффициентов на этот вектор */
-		MPI_Allgather(Y, EL(Y), MPI_DOUBLE, V, EL(Y), MPI_DOUBLE,
-					  comm_gr);
-		for (j = 0; j < N; j++)
-			for (i = 0; i < M; i++)
-				S[j] += MA[j][i] * V[i];
-		z = 0; /* Флаг завершения вычислений всеми ветвями */
-		for (i = 0; i < N; i++)
-		{
-			Y1[i] = Y[i] - T * (S[i] - F[i]);
-			if (ABS(ABS(Y1[i]) - ABS(Y[i])) > E)
-				z = 1;
-		}
-		/* Суммируем все флаги (по всем ветвям) и результат записываем в H в каждой ветви */
-		MPI_Allreduce(&z, &H, 1, MPI_INT, MPI_SUM, comm_gr);
-	} while (H > 0);
-	/* Все ветви засекают время и печатают */
-	t2 = MPI_Wtime();
-	rt = t2 - t1;
-	printf("MyP = %d Time = %d\n", MyP, rt);
-	/* Все ветви для контроля печатают свои первые четыре значения корня */
-	printf("Rez MyP = %d Y0=%f Y1=%f Y2=%f Y3=%f\n", MyP, Y[0], Y[1], Y[2], Y[3]);
-	/* Все ветви завершают выполнение */
-	MPI_Comm_free(&comm_gr);
+
+	// Очищаем память
+	delete[] reqs;
+	delete[] status;
+
+	// Критическая секция
+	MPI_Barrier(comm);
+
+	// Выводим финальную статистику
+	std::cout << "I " << rank << " sent " << questions_sent << " questions and " << answers_sent << " answers! Recieved questions " << questions_recieved << " and answers " << answers_recieved << endl;
+
+	// Завершаем работу с MPI
 	MPI_Finalize();
-	return (0);
+	
 }

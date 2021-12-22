@@ -1,89 +1,97 @@
-// 6. МПИ Составить программу, решающую систему линейных 
-// алгебраических уравнений методом простых итераций. 
-// Для распараллеливания использовать MPI и коллективные операции.
+// ShishkoLab7.cpp : Этот файл содержит функцию "main". Здесь начинается и заканчивается выполнение программы.
 // 
-// Распределение данных - горизонтальными полосами. (Запуск программы на 4 процессах).  
-// Для запуска mpic++ test.cpp && mpiexec -n 4 ./a.out
+// Напишите программу с использованием MPI, моделирующую ситуацию: есть 4
+// бригады по 20 рабочих (процессы). Каждый рабочий отсылает по одному 100
+// сообщений-вопросов случайным рабочим из других бригад. Те должны ответит
+// на вопрос. Программа не должна попадать в ситуацию “deadlock”.
 
-#include <stdio.h>
-#include <mpi.h>
-#include <time.h>
-#include <sys/time.h>
-#include <stdlib.h> 
-#include <string.h>
+#include <iostream>
+#include "mpi.h"
 
-// Каждая ветвь задает размеры своих полос матрицы MA и вектора правой части. 
-#define M 16
-#define N 4
-#define EL(x) (sizeof(x) / sizeof(x[0]))
-#define ABS(X) ((X) < 0 ? -(X) : (X))
-// Задаем необходимую точность приближенных корней  
-#define E 0.0001
-// Задаем шаг итерации  
-#define T 0.1
-// Описываем массивы для полос исходной матрицы - MA, вектора правой части - F, значения приближений на предыдущей итерации - Y и текущей - Y1, результата умножения матрицы коэффициентов на вектор - S и всего вектора значения приближений на предыдущей итерации - V.  
-static double MA[N][M], F[N], Y[N], Y1[N], S[N], V[M];
+#define WORKER_COUNT 20
 
-int main(int argc, char **argv) {
-	int i, j, z, H, MyP, size, v;
-	int *index, *edges;
-	MPI_Comm comm_gr; 
-	int reord = 1;
-	MPI_Init(&argc, &argv);
-	MPI_Comm_size(MPI_COMM_WORLD, &size);
-	index = (int *)malloc(size * sizeof(int));
-	edges = (int *)malloc(size * (size - 1) * sizeof(int));
-	// Заполняем массивы для описания вершин и ребер для топологии полный граф и задаем топологию "полный граф".  
-	for (i = 0; i < size; i++) {
-		index[i] = (size - 1) * (i + 1);
-		v = 0;
-		for (j = 0; j < size; j++)
-		{
-			if (i != j)
-				edges[i * (size - 1) + v++] = j;
-		}
-	}
-	MPI_Graph_create(MPI_COMM_WORLD, size, index, edges, reord, &comm_gr); 
-	MPI_Comm_rank(comm_gr, &MyP);
-	// Каждая ветвь генерирует свои полосы матрицы A и свой отрезок вектора правой части. (По диагонали исходной матрицы - числа = 2, остальные числа = 1).  
-	for (i = 0; i < N; i++)
-	{
-		for (j = 0; j < M; j++)
-		{
-			if ((N * MyP + i) == j)
-				MA[i][j] = 2.0;
-			else
-				MA[i][j] = 1.0;
-		}
-		F[i] = M + 1;
-	}
-	// Каждая ветвь задает начальное приближение корней.  
-	for (i = 0; i < N; i++)
-		Y1[i] = 0.8; 
-	do
-	{
-		for (i = 0; i < N; i++)
-		{
-			S[i] = 0.0;
-			Y[i] = Y1[i];
-		}
-		MPI_Allgather(Y, EL(Y), MPI_DOUBLE, V, EL(Y), MPI_DOUBLE, comm_gr);
-		for (j = 0; j < N; j++)
-			for (i = 0; i < M; i++)
-				S[j] += MA[j][i] * V[i];
-		z = 0; // Флаг завершения вычислений всеми ветвями  
-		for (i = 0; i < N; i++)
-		{
-			Y1[i] = Y[i] - T * (S[i] - F[i]);
-			if (ABS(ABS(Y1[i]) - ABS(Y[i])) > E)
-				z = 1;
-		}
-		// Суммируем все флаги (по всем ветвям) и результат записываем в H в каждой ветви  
-		MPI_Allreduce(&z, &H, 1, MPI_INT, MPI_SUM, comm_gr);
-	} while (H > 0);
-	printf("MyP = %d\n", MyP);
-	printf("Rez MyP = %d Y0=%f Y1=%f Y2=%f Y3=%f\n", MyP, Y[0], Y[1], Y[2], Y[3]); 
-	MPI_Comm_free(&comm_gr);
-	MPI_Finalize();
-	return (0);
+//mpiexec -n 4 ShiskoLab7
+
+using namespace std;
+
+void Helper(int mainRank, int process_Rank, int worker[WORKER_COUNT])
+{
+    int flagExit = 1;
+    int randomIndexWorker;
+    int randomIndexBrigade;
+    int requestRank;
+    int message;
+    int index;
+    int responce;
+
+    if (process_Rank == mainRank)
+    {
+        for (int i = 0; i < WORKER_COUNT; i++)
+        {
+            for (int j = 0; j < 100; j++)
+            {
+                while ((randomIndexBrigade = 1 + rand() % 3) == process_Rank) // brigade[1 .. 3]
+                { }
+                MPI_Bcast(&randomIndexBrigade, 1, MPI_INT, mainRank, MPI_COMM_WORLD); //сообщаем всем процессам, норме бригады, куда отправляем
+                randomIndexWorker = rand() % WORKER_COUNT; // [0 .. 19]
+                MPI_Send(&randomIndexWorker, 1, MPI_INT, randomIndexBrigade, 0, MPI_COMM_WORLD); //отправляем конкретному рабочему
+                MPI_Send(&worker[i], 1, MPI_INT, randomIndexBrigade, 1, MPI_COMM_WORLD); //отправляем само сообщение
+
+                MPI_Recv(&responce, 1, MPI_INT, MPI_ANY_SOURCE, 2, MPI_COMM_WORLD, MPI_STATUS_IGNORE); //получаем ответ от рабочего, кому слали
+                if (i == WORKER_COUNT - 1 && j == 99)
+                    flagExit = 0;
+                MPI_Bcast(&flagExit, 1, MPI_INT, mainRank, MPI_COMM_WORLD); //можно ли другим процессам выходить из цикла?
+            }
+        }
+    }
+    else
+    {
+        while (flagExit)
+        {
+            MPI_Bcast(&requestRank, 1, MPI_INT, mainRank, MPI_COMM_WORLD); //слушаем какой бригаде придет сообщение
+            if (requestRank == process_Rank)
+            {
+                MPI_Recv(&index, 1, MPI_INT, mainRank, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE); //получаем индекс, какому рабочему адресована отправка
+                MPI_Recv(&message, 1, MPI_INT, mainRank, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE); //получаем само сообщение
+
+                MPI_Send(&worker[index], 1, MPI_INT, mainRank, 2, MPI_COMM_WORLD); //отправляем ответ конкретного рабочего
+            }
+
+            MPI_Bcast(&flagExit, 1, MPI_INT, mainRank, MPI_COMM_WORLD); //слушаем, можно ли выходить из циклов while
+        }
+    }
 }
+
+int main(int argc, char** argv)
+{
+    srand(time(NULL));
+    int process_Rank, size_Of_Cluster;
+    double result = 0;
+    int worker[WORKER_COUNT];
+
+    MPI_Init(&argc, &argv);
+
+    MPI_Comm_size(MPI_COMM_WORLD, &size_Of_Cluster);
+    MPI_Comm_rank(MPI_COMM_WORLD, &process_Rank);
+
+    for (int i = 0; i < WORKER_COUNT; i++)
+        worker[i] = rand() % 20; //сообщения которые будет рассылать рабочий
+
+    Helper(0, process_Rank, worker);
+    Helper(1, process_Rank, worker);
+    Helper(2, process_Rank, worker);
+    Helper(3, process_Rank, worker);
+
+    MPI_Finalize();
+}
+
+// Запуск программы: CTRL+F5 или меню "Отладка" > "Запуск без отладки"
+// Отладка программы: F5 или меню "Отладка" > "Запустить отладку"
+
+// Советы по началу работы 
+//   1. В окне обозревателя решений можно добавлять файлы и управлять ими.
+//   2. В окне Team Explorer можно подключиться к системе управления версиями.
+//   3. В окне "Выходные данные" можно просматривать выходные данные сборки и другие сообщения.
+//   4. В окне "Список ошибок" можно просматривать ошибки.
+//   5. Последовательно выберите пункты меню "Проект" > "Добавить новый элемент", чтобы создать файлы кода, или "Проект" > "Добавить существующий элемент", чтобы добавить в проект существующие файлы кода.
+//   6. Чтобы снова открыть этот проект позже, выберите пункты меню "Файл" > "Открыть" > "Проект" и выберите SLN-файл.
